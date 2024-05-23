@@ -11,7 +11,7 @@ const HomeScreen = () => {
 
   const pickDocument = async () => {
       const result = await DocumentPicker.getDocumentAsync({
-        type: ["text/csv", "text/data"],
+        // type: ["text/csv", "text/data"],
         multiple: false,
       });
 
@@ -35,7 +35,8 @@ const HomeScreen = () => {
     });
 
     try {
-      const uploadResponse = await fetch('http://<your-ip>:5000/upload', {
+      // TODO: Entrar nas configurações do dispositivo e ir em Redes -> Descobrir qual é o IP da Rede, normalmente 10.0.2.2, mas tem que descobrir
+      const uploadResponse = await fetch('http://10.0.2.2:5000/upload', {
         method: 'POST',
         body: formData,
         headers: {
@@ -49,8 +50,7 @@ const HomeScreen = () => {
         throw new Error(uploadData.erro);
       }
 
-      // Now classify the uploaded file
-      const classifyResponse = await fetch('http://<your-ip>:5000/classify', {
+      const classifyResponse = await fetch('http://10.0.2.2:5000/classify', {
         method: 'POST',
         headers: {
           'Accept': 'application/json',
