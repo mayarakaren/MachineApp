@@ -1,79 +1,106 @@
 import React, { useState } from 'react';
-import { View, Text, Button, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, Alert, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
-import * as DocumentPicker from "expo-document-picker"
+import * as DocumentPicker from 'expo-document-picker';
 import { useRouter } from 'expo-router';
 
 const HomeScreen = () => {
-  const [algorithm, setAlgorithm] = useState<string>('');
-  const [dataset, setDataset] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
-  const router = useRouter()
+  const [dataset, setDataset] = useState(null);
+  const [algorithm, setAlgorithm] = useState('knn'); // Default to 'knn'
+  const [loading, setLoading] = useState(false);
+  const router = useRouter();
 
-  const pickDocument = async () => {
-      const result = await DocumentPicker.getDocumentAsync({
-        // type: ["text/csv", "text/data"],
-        multiple: false,
+  const handleFilePick = async () => {
+    try {
+      let result = await DocumentPicker.getDocumentAsync({
+        type: '*/*',
       });
 
-      if (!result.canceled) {
-        setDataset(result.assets[0]); 
+      console.log('DocumentPicker result:', result);
+
+      if (result.type === 'success') {
+        const file = result.assets ? result.assets[0] : result;
+        const { name, uri } = file;
+
+        console.log('Selected file:', file);
+
+        setLoading(true);
+
+        try {
+          const fileData = await fetch(uri);
+          const blobData = await fileData.blob();
+
+          const uploadResponse = await fetch('http://192.168.18.23:5000/upload', {
+            method: 'POST',
+            body: blobData,
+            headers: {
+              'Content-Type': 'application/octet-stream',
+              'Content-Disposition': `attachment; filename=${name}`,
+            },
+          });
+
+          const uploadData = await uploadResponse.json();
+
+          console.log('Upload response:', uploadData);
+
+          if (uploadResponse.status !== 200) {
+            throw new Error(uploadData.erro || 'Upload failed');
+          }
+
+          Alert.alert("Sucesso", "Base carregada com sucesso!");
+          setDataset({ name, uri, filePath: uploadData.file_path }); // Store the file path from the response
+        } catch (error) {
+          console.error('Error uploading file:', error);
+          Alert.alert("Erro", `Erro ao carregar base de dados: ${error.message}`);
+        } finally {
+          setLoading(false);
+        }
+      } else {
+        Alert.alert("Erro", "Nenhum arquivo selecionado");
       }
+    } catch (error) {
+      console.error("Error picking document:", error);
+      Alert.alert("Erro", "Erro ao selecionar o arquivo");
+    }
   };
 
   const handleExecution = async () => {
-    if (!dataset) {
-      alert("Please select a dataset");
+    if ((algorithm === 'knn' || algorithm === 'arvore') && !dataset) {
+      Alert.alert("Erro", "Por favor, selecione um conjunto de dados");
       return;
     }
 
-    // First, upload the file
-    const formData = new FormData();
-    formData.append('file', {
-      uri: dataset.uri,
-      name: dataset.name,
-      type: 'text/csv'
-    });
+    let filePath = dataset ? dataset.filePath : '';
 
     try {
-      // TODO: Entrar nas configurações do dispositivo e ir em Redes -> Descobrir qual é o IP da Rede, normalmente 10.0.2.2, mas tem que descobrir
-      const uploadResponse = await fetch('http://10.0.2.2:5000/upload', {
-        method: 'POST',
-        body: formData,
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
-      });
-
-      const uploadData = await uploadResponse.json();
-
-      if (uploadResponse.status !== 200) {
-        throw new Error(uploadData.erro);
-      }
-
-      const classifyResponse = await fetch('http://10.0.2.2:5000/classify', {
+      const classifyResponse = await fetch('http://192.168.18.23:5000/classify', {
         method: 'POST',
         headers: {
           'Accept': 'application/json',
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          filePath: uploadData.file_path,
-          algorithm: algorithm
+          filePath: filePath,
+          algorithm: algorithm,
         }),
       });
 
       const classifyData = await classifyResponse.json();
 
+      console.log('Classify response:', classifyData);
+
       if (classifyResponse.status !== 200) {
         throw new Error(classifyData.erro);
       }
 
-      console.log("Classify Response", classifyData);
-      router.push("/result");
-      
+      router.push({
+        pathname: '/result',
+        params: { classifyData: JSON.stringify(classifyData) },
+      });
+
     } catch (error) {
       console.error(error);
-      alert(`Error: ${error.message}`);
+      Alert.alert("Erro", `Erro ao executar algoritmo: ${error.message}`);
     }
   };
 
@@ -90,19 +117,16 @@ const HomeScreen = () => {
         <Picker.Item label="Árvore de Decisão" value="arvore" />
       </Picker>
       <Text style={styles.label}>Selecione a Base de Dados:</Text>
-      <TouchableOpacity onPress={pickDocument} style={styles.button}>
-        <Text>
-          Carregar Base
-        </Text>
+      <TouchableOpacity onPress={handleFilePick} style={styles.button}>
+        <Text style={styles.buttonText}>Carregar Base</Text>
       </TouchableOpacity>
       {dataset && (
         <Text style={styles.datasetName}>{dataset.name}</Text>
       )}
       <TouchableOpacity onPress={handleExecution} style={styles.btn}>
-        <Text>
-          Executar Algoritmo
-        </Text>
+        <Text style={styles.buttonText}>Executar Algoritmo</Text>
       </TouchableOpacity>
+      {loading && <ActivityIndicator size="large" color="#6495ED" />}
     </View>
   );
 };
@@ -112,6 +136,7 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 20,
     justifyContent: 'center',
+    backgroundColor: '#FFFFFF', // Set background color to white
   },
   label: {
     fontSize: 18,
@@ -125,7 +150,7 @@ const styles = StyleSheet.create({
   datasetName: {
     marginVertical: 10,
     fontSize: 16,
-    color: 'grey',
+    color: 'black',
   },
   button: {
     backgroundColor: '#6495ED',
@@ -134,17 +159,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 20,
-    color: '#ffffff',
   },
   btn: {
     backgroundColor: '#6495ED',
     padding: 12,
-    marginBottom: 10,
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 20,
+  },
+  buttonText: {
     color: '#ffffff',
-  }
+    fontSize: 16,
+  },
 });
 
 export default HomeScreen;
