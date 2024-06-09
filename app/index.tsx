@@ -8,6 +8,7 @@ const HomeScreen = () => {
   const [dataset, setDataset] = useState(null);
   const [algorithm, setAlgorithm] = useState('knn'); // Default to 'knn'
   const [loading, setLoading] = useState(false);
+  const [baseLoaded, setBaseLoaded] = useState(false);
   const router = useRouter();
 
   const handleFilePick = async () => {
@@ -15,40 +16,40 @@ const HomeScreen = () => {
       let result = await DocumentPicker.getDocumentAsync({
         type: '*/*',
       });
-
+  
       console.log('DocumentPicker result:', result);
-
+  
       if (result.type === 'success') {
         const file = result.assets ? result.assets[0] : result;
         const { name, uri } = file;
-
+  
         console.log('Selected file:', file);
-
+  
         setLoading(true);
-
+  
         try {
-          const fileData = await fetch(uri);
-          const blobData = await fileData.blob();
-
+          const formData = new FormData();
+          formData.append('file', {
+            uri: uri,
+            name: name,
+            type: '*/*',
+          });
+  
           const uploadResponse = await fetch('http://192.168.18.23:5000/upload', {
             method: 'POST',
-            body: blobData,
-            headers: {
-              'Content-Type': 'application/octet-stream',
-              'Content-Disposition': `attachment; filename=${name}`,
-            },
+            body: formData,
           });
-
+  
           const uploadData = await uploadResponse.json();
-
+  
           console.log('Upload response:', uploadData);
-
+  
           if (uploadResponse.status !== 200) {
             throw new Error(uploadData.erro || 'Upload failed');
           }
-
+  
+          setBaseLoaded(true); // Informa que a base foi carregada com sucesso
           Alert.alert("Sucesso", "Base carregada com sucesso!");
-          setDataset({ name, uri, filePath: uploadData.file_path }); // Store the file path from the response
         } catch (error) {
           console.error('Error uploading file:', error);
           Alert.alert("Erro", `Erro ao carregar base de dados: ${error.message}`);
@@ -63,7 +64,7 @@ const HomeScreen = () => {
       Alert.alert("Erro", "Erro ao selecionar o arquivo");
     }
   };
-
+  
   const handleExecution = async () => {
     if ((algorithm === 'knn' || algorithm === 'arvore') && !dataset) {
       Alert.alert("Erro", "Por favor, selecione um conjunto de dados");
@@ -93,13 +94,15 @@ const HomeScreen = () => {
         throw new Error(classifyData.erro);
       }
 
+      console.log('Navigation params:', { classifyData: JSON.stringify(classifyData) });
+
       router.push({
         pathname: '/result',
         params: { classifyData: JSON.stringify(classifyData) },
       });
 
     } catch (error) {
-      console.error(error);
+      console.error('Error executing algorithm:', error);
       Alert.alert("Erro", `Erro ao executar algoritmo: ${error.message}`);
     }
   };
@@ -120,8 +123,8 @@ const HomeScreen = () => {
       <TouchableOpacity onPress={handleFilePick} style={styles.button}>
         <Text style={styles.buttonText}>Carregar Base</Text>
       </TouchableOpacity>
-      {dataset && (
-        <Text style={styles.datasetName}>{dataset.name}</Text>
+      {baseLoaded && (
+        <Text style={styles.successText}>Base carregada com sucesso!</Text>
       )}
       <TouchableOpacity onPress={handleExecution} style={styles.btn}>
         <Text style={styles.buttonText}>Executar Algoritmo</Text>
