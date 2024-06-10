@@ -3,7 +3,6 @@ import { View, Text, Alert, StyleSheet, TouchableOpacity, ActivityIndicator } fr
 import { Picker } from '@react-native-picker/picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { useRouter } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const HomeScreen = () => {
   const [dataset, setDataset] = useState(null);
@@ -18,18 +17,13 @@ const HomeScreen = () => {
         type: '*/*',
       });
 
-      console.log('DocumentPicker result:', result);
+      if (result.type === 'success') {
+        const file = result.assets ? result.assets[0] : result;
+        const { name } = file;
 
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const { name, uri } = result.assets[0];
-
-        // Simulate a valid server file path
-        const simulatedFilePath = `bases/iris.data`; // Simulando um caminho válido no servidor
-
-        setDataset({ name, uri: simulatedFilePath });
-        await AsyncStorage.setItem('dataset', JSON.stringify({ name, uri: simulatedFilePath }));
+        setDataset({ name });
         setBaseLoaded(true);
-        Alert.alert("Sucesso", "Base carregada com sucesso!");
+        Alert.alert("Sucesso", "Base carregada com sucesso (simulada)!");
       } else {
         Alert.alert("Erro", "Nenhum arquivo selecionado");
       }
@@ -38,31 +32,16 @@ const HomeScreen = () => {
       Alert.alert("Erro", "Erro ao selecionar o arquivo");
     }
   };
-
+  
   const handleExecution = async () => {
-    // Check if dataset is needed for selected algorithm
     if ((algorithm === 'knn' || algorithm === 'arvore') && !dataset) {
       Alert.alert("Erro", "Por favor, selecione um conjunto de dados");
       return;
     }
 
-    let filePath = '';
-
-    if (algorithm === 'knn' || algorithm === 'arvore') {
-      let storedDataset = await AsyncStorage.getItem('dataset');
-      storedDataset = storedDataset ? JSON.parse(storedDataset) : null;
-
-      if (!storedDataset) {
-        Alert.alert("Erro", "Por favor, selecione um conjunto de dados");
-        return;
-      }
-
-      filePath = storedDataset.uri;
-    }
+    let filePath = dataset ? dataset.filePath : '';
 
     try {
-      setLoading(true);
-
       const classifyResponse = await fetch('http://192.168.18.23:5000/classify', {
         method: 'POST',
         headers: {
@@ -77,9 +56,13 @@ const HomeScreen = () => {
 
       const classifyData = await classifyResponse.json();
 
+      console.log('Classify response:', classifyData);
+
       if (classifyResponse.status !== 200) {
         throw new Error(classifyData.erro);
       }
+
+      console.log('Navigation params:', { classifyData: JSON.stringify(classifyData) });
 
       router.push({
         pathname: '/result',
@@ -89,8 +72,6 @@ const HomeScreen = () => {
     } catch (error) {
       console.error('Error executing algorithm:', error);
       Alert.alert("Erro", `Erro ao executar algoritmo: ${error.message}`);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -111,7 +92,7 @@ const HomeScreen = () => {
         <Text style={styles.buttonText}>Carregar Base</Text>
       </TouchableOpacity>
       {baseLoaded && (
-        <Text style={styles.successText}>Base carregada com sucesso: {dataset.name}</Text>
+        <Text style={styles.successText}>Base carregada com sucesso!</Text>
       )}
       <TouchableOpacity onPress={handleExecution} style={styles.btn}>
         <Text style={styles.buttonText}>Executar Algoritmo</Text>
@@ -160,11 +141,6 @@ const styles = StyleSheet.create({
   buttonText: {
     color: '#ffffff',
     fontSize: 16,
-  },
-  successText: {
-    color: 'green',
-    fontSize: 16,
-    marginVertical: 10,
   },
 });
 
